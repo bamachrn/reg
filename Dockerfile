@@ -1,11 +1,21 @@
-FROM centos:latest
+FROM registry.centos.org/centos/golang:latest
 
-ENV PATH /go/bin:/usr/local/go/bin:$PATH
-ENV GOPATH /go
+ENV PATH /go/bin:/usr/local/go/bin:/opt/rh/go-toolset-7/root/usr/bin:/opt/rh/go-toolset-7/root/usr/sbin:/usr/local/sbin:$PATH
+ENV GOPATH /go:/go:/opt/rh/go-toolset-7/root/usr/share/gocode:/opt/rh/go-toolset-7/root/usr/share/gocode:$GOPATH
 
-RUN yum install -y go
+RUN mkdir /src
 
-RUN go get -v github.com/bamachrn/reg
+COPY . /go/src/reg
+RUN cd /go/src/reg/server && \
+    go get -v && \
+    go build && \
+    mv server /src/server
 
-ENTRYPOINT ["reg-server"]
+COPY server/static /src/static
+COPY server/templates /src/templates
+
+WORKDIR /src
+
+EXPOSE 8080
+ENTRYPOINT ["./server"]
 CMD ["--help"]

@@ -7,15 +7,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+	//"time"
 
-	"github.com/bamachrn/reg/clair"
-	"github.com/bamachrn/reg/registry"
-	"github.com/bamachrn/reg/utils"
 	"github.com/gorilla/mux"
 	wordwrap "github.com/mitchellh/go-wordwrap"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
+	"reg/clair"
+	"reg/registry"
+	"reg/utils"
 )
 
 const (
@@ -27,10 +27,13 @@ const (
 )
 
 var (
-	updating = false
-	r        *registry.Registry
-	cl       *clair.Clair
-	tmpl     *template.Template
+	updating         = false
+	r                *registry.Registry
+	cl               *clair.Clair
+	tmpl             *template.Template
+	APIURL           = "registryApi.serverAddress"
+	NAMESPACE        = "pipeline"
+	IMAGE_PULL_MOUNT = "/var/image_pull"
 )
 
 // preload initializes any global options and configuration
@@ -98,6 +101,18 @@ func main() {
 			Name:  "clair",
 			Usage: "url to clair instance",
 		},
+		cli.StringFlag{
+			Name:  "apiserver",
+			Usage: "API server endpoint for retrieving build details",
+		},
+		cli.StringFlag{
+			Name:  "osnamespace",
+			Usage: "OKD namespace under which the container pipeline service is running",
+		},
+		cli.StringFlag{
+			Name:  "countmount",
+			Usage: "Mount point location for image pull count generation",
+		},
 	}
 	app.Action = func(c *cli.Context) error {
 		auth, err := utils.GetAuthConfig(c.GlobalString("username"), c.GlobalString("password"), c.GlobalString("registry"))
@@ -132,7 +147,7 @@ func main() {
 			logrus.Fatal(err)
 		}
 		staticDir := filepath.Join(wd, staticFileDir)
-		dockerfilesDir := filepath.Join(wd, dockerfileDir)
+		//dockerfilesDir := filepath.Join(wd, dockerfileDir)
 
 		// create the template
 		templateDir := filepath.Join(staticDir, "../templates")
@@ -189,45 +204,7 @@ func main() {
 			cl:  cl,
 		}
 
-		// create the initial index
-		logrus.Info("creating initial static index")
-		if err := rc.repositories(staticDir); err != nil {
-			logrus.Fatalf("Error creating index: %v", err)
-		}
-
-		// retrieve all the dockerfiles
-		logrus.Info("retrieving dockerfiles")
-		if err := rc.dockerfiles(dockerfilesDir); err != nil {
-			logrus.Fatalf("Error retrieving initial dockerfiles: %v", err)
-		}
-
-		if c.GlobalBool("once") {
-			logrus.Info("Output generated")
-			return nil
-		}
-
-		// parse the duration
-		dur, err := time.ParseDuration(c.String("interval"))
-		if err != nil {
-			logrus.Fatalf("parsing %s as duration failed: %v", c.String("interval"), err)
-		}
-		ticker := time.NewTicker(dur)
-
-		// TODO! implement README.md updates on site
-		go func() {
-			// create more indexes every X minutes based off interval
-			for range ticker.C {
-				if !updating {
-					logrus.Info("creating timer based static index")
-					if err := rc.repositories(staticDir); err != nil {
-						logrus.Warnf("creating static index failed: %v", err)
-						updating = false
-					}
-				} else {
-					logrus.Warnf("skipping timer based static index update for %s", c.String("interval"))
-				}
-			}
-		}()
+		APIURL = c.GlobalString("apiserver")
 
 		// create r server
 		r := mux.NewRouter()
@@ -237,22 +214,15 @@ func main() {
 		// static files handler
 		staticHandler := http.FileServer(http.Dir(staticDir))
 
-		/*
-			r.HandleFunc("/repo/{username}/{container}", rc.tagsHandler)
-			r.HandleFunc("/repo/{username}/{container}/", rc.tagsHandler)
-			r.HandleFunc("/repo/{username}/{container}/tag/{tag}", rc.vulnerabilitiesHandler)
-			r.HandleFunc("/repo/{username}/{container}/tag/{tag}/", rc.vulnerabilitiesHandler)
-			r.HandleFunc("/repo/{username}/{container}/tag/{tag}/vulns", rc.vulnerabilitiesHandler)
-			r.HandleFunc("/repo/{username}/{container}/tag/{tag}/vulns/", rc.vulnerabilitiesHandler)
-			r.HandleFunc("/repo/{username}/{container}/tag/{tag}/vulns.json", rc.vulnerabilitiesHandler)
-		*/
-
 		// Make sure we handle css, img and js without the container handler overriding anything
 		r.PathPrefix("/css/").Handler(http.StripPrefix("/", staticHandler))
 		r.PathPrefix("/img/").Handler(http.StripPrefix("/", staticHandler))
 		r.PathPrefix("/js/").Handler(http.StripPrefix("/", staticHandler))
 		r.PathPrefix("/about").Handler(http.StripPrefix("/", staticHandler))
-		r.PathPrefix("/containers").Handler(http.StripPrefix("/", staticHandler))
+
+		//listing images in landing page
+		r.HandleFunc("/containers", rc.imageListHandler)
+		r.HandleFunc("/containers/", rc.imageListHandler)
 
 		// container handler
 		r.HandleFunc("/{appid}/{jobid}", rc.tagListHandler)

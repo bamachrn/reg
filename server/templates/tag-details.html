@@ -6,6 +6,7 @@
   <title>{{ .RegistryDomain }}/{{ .Image }}</title>
   <link rel="stylesheet" href="/css/github.css">
   <link rel="stylesheet" href="/css/gfm.css">
+  <link rel="stylecheet" href="/css/github-markdown.css">
   <script src="/js/highlight.pack.js"></script>
   <script>hljs.initHighlightingOnLoad();</script>
   <script>
@@ -64,10 +65,10 @@
           </div>
         {{ end }}
         {{ if ne .Readme "" }}
-          <div class="tab-pane fade" id="description">
-            <div class="markdown-body">
+          <div class="tab-pane fade markdown-body" id="description">
+            <pre><code class="markdown">
              {{ .Readme }}
-            </div>
+             </code></pre>
           </div>
         {{ end }}
         <div class="tab-pane fade" id="build-logs">
